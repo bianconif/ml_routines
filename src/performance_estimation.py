@@ -3,6 +3,7 @@ import os
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold,\
      StratifiedShuffleSplit
+from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import confusion_matrix as cm
 from sklearn.metrics import accuracy_score, classification_report
 
@@ -63,6 +64,10 @@ def internal_validation(df_features, df_metadata, clf, scaler,
     binary_class_labels: tuple of str (2)
         The positive and negative class labels (in this order). Required 
         if binary_output = True.
+    param_grid: dict (optional)
+        Performs hyperparameter tuning via 5-fold cross validation on
+        the parameter space defined by the keys and values of the 
+        dictionary.
         
     Returns
     -------
@@ -147,12 +152,12 @@ def internal_validation(df_features, df_metadata, clf, scaler,
             df_test_metadata=df_test_metadata, clf=clf, scaler=scaler,
             pattern_id_column=pattern_id_column, 
             class_column=class_column, 
-            feature_columns=feature_columns)
+            feature_columns=feature_columns, **args)
                 
         valid_res[split_idx, 0] = classification_report['accuracy']
         if binary_output:
             sens, spec = _get_sensitivity_specificity(
-                classification_report, **args
+                classification_report, args['binary_class_labels']
             )
             valid_res[split_idx, 1] = sens
             valid_res[split_idx, 2] = spec
@@ -166,7 +171,8 @@ def internal_validation(df_features, df_metadata, clf, scaler,
             
 def cross_validation(df_train, df_test, df_train_metadata, 
                      df_test_metadata, clf, scaler,
-                     pattern_id_column, class_column, feature_columns):
+                     pattern_id_column, class_column, feature_columns,
+                     **args):
     """Estimates accuracy given train/test labels and features
     
     Parameters
@@ -193,6 +199,10 @@ def cross_validation(df_train, df_test, df_train_metadata,
     feature_columns: list of str
         Names of the columns that store the features in
         df_train and df_test dataframes.
+    param_grid: dict (optional)
+        Performs hyperparameter tuning via 5-fold cross validation on
+        the parameter space defined by the keys and values of the 
+        dictionary.
     
     Returns
     -------
@@ -216,6 +226,12 @@ def cross_validation(df_train, df_test, df_train_metadata,
     if scaler:
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
+    
+    #Perform hyperparameter tuning if requested
+    if 'param_grid' in args:
+        tuned_clf = GridSearchCV(clf, args['param_grid'])
+        tuned_clf.fit(X_train, y_train)
+        clf = tuned_clf.best_estimator_
     
     #Train the model
     clf.fit(X=X_train, y=y_train)
