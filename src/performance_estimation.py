@@ -4,8 +4,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold,\
      StratifiedShuffleSplit
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import confusion_matrix as cm
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import classification_report
 
 
 def internal_validation(df_features, df_metadata, clf, scaler,
@@ -96,13 +95,12 @@ def internal_validation(df_features, df_metadata, clf, scaler,
     match method:
         case 'stratified-k-fold':
             splitter = StratifiedKFold(
-                shuffle= True, n_splits = method_params['n_splits'],
-                random_state=0,
+                shuffle= True, n_splits = method_params['n_splits']
             )
         case 'stratified-shuffle-split':
             splitter = StratifiedShuffleSplit(
                 n_splits = method_params['n_splits'], 
-                test_size = method_params['test_size'], random_state=0
+                test_size = method_params['test_size']
             )
         case _:
             raise Exception('Splitting method not supported')
