@@ -8,7 +8,7 @@ def concatenate_features(dfs_features, feature_columns, pattern_id_column):
     dfs_features: list of pd.DataFrame (N)
         The dataframes containing the features that we want to 
         concatenate.
-    feature_columns: list of str (N)
+    feature_columns: list of list of str (N)
         For each dataframe in dfs_features the column names representing
         the features.
     pattern_id_column: str
