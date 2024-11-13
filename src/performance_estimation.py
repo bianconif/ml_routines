@@ -4,7 +4,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold,\
      StratifiedShuffleSplit
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import classification_report
+import sklearn.metrics
 
 
 def internal_validation(df_features, df_metadata, clf, scaler,
@@ -170,7 +170,7 @@ def internal_validation(df_features, df_metadata, clf, scaler,
 def cross_validation(df_train, df_test, df_train_metadata, 
                      df_test_metadata, clf, scaler,
                      pattern_id_column, class_column, feature_columns,
-                     **args):
+                     complete_report=False, **args):
     """Estimates accuracy given train/test labels and features
     
     Parameters
@@ -197,6 +197,8 @@ def cross_validation(df_train, df_test, df_train_metadata,
     feature_columns: list of str
         Names of the columns that store the features in
         df_train and df_test dataframes.
+    complete_report: bool
+        If True a complete report is generated.
     param_grid: dict (optional)
         Performs hyperparameter tuning via 5-fold cross validation on
         the parameter space defined by the keys and values of the 
@@ -207,6 +209,13 @@ def cross_validation(df_train, df_test, df_train_metadata,
     classification_report: dict
         Summary of the precision, recall, F1 score for each class as
         returned by sklearn.metrics.classification_report().  
+    df_complete_report: pd.DataFrame (optional)
+        A dataframe containing the class labels and posterior 
+        probabilities of each pattern in df_test. The columns are 
+        organised as follows: 
+         - 'Predicted labels' -> Predicted hard labels
+         - All the other columns contain the posterior probabilities of
+           each class, where the column name represents the class label.
     """
     #Set the primary key as index
     for df in [df_train, df_test, df_train_metadata, df_test_metadata]:
@@ -240,9 +249,26 @@ def cross_validation(df_train, df_test, df_train_metadata,
         
     #Reset the indices
     for df in [df_train, df_test, df_train_metadata, df_test_metadata]:
-        df.reset_index(inplace=True)    
+        df.reset_index(inplace=True)
+        
+    classification_report = sklearn.metrics.classification_report(
+            y_true, y_pred, output_dict=True)
     
-    return classification_report(y_true, y_pred, output_dict=True)
+    retval = classification_report 
+    
+    if complete_report:
+
+        #Compute posterior probabilities and add it to the report
+        y_pred_proba = clf.predict_proba(X=X_test)
+        df_complete_report = pd.DataFrame(data=y_pred_proba, 
+                                          columns=clf.classes_)
+        
+        #Add hard predicted labels
+        df_complete_report['Predicted labels'] = y_pred
+           
+        retval = classification_report, df_complete_report      
+    
+    return retval
 
 def _get_sensitivity_specificity(classification_report, 
                                  binary_class_labels):
