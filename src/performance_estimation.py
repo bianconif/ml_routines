@@ -213,7 +213,9 @@ def cross_validation(df_train, df_test, df_train_metadata,
         A dataframe containing the class labels and posterior 
         probabilities of each pattern in df_test. The columns are 
         organised as follows: 
-         - 'Predicted labels' -> Predicted hard labels
+         - {pattern_id_column} -> String that uniquely identifies 
+                                  each pattern to classify
+         - 'Predicted_label' -> The hard labels predicted 
          - All the other columns contain the posterior probabilities of
            each class, where the column name represents the class label.
     """
@@ -264,7 +266,10 @@ def cross_validation(df_train, df_test, df_train_metadata,
                                           columns=clf.classes_)
         
         #Add hard predicted labels
-        df_complete_report['Predicted labels'] = y_pred
+        df_complete_report['Predicted_label'] = y_pred
+        
+        #Add pattern ids
+        df_complete_report[pattern_id_column] = df_test[pattern_id_column]
            
         retval = classification_report, df_complete_report      
     
