@@ -1,9 +1,6 @@
 import pandas as pd
 import sklearn.metrics
 
-from ml_routines.src.performance_estimation import cross_validation
-
-
 def concatenate_features(dfs_features, feature_columns, pattern_id_column):
     """Concatenates features (early fusion)
     

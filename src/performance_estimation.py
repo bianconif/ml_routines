@@ -6,26 +6,26 @@ from sklearn.model_selection import StratifiedKFold,\
 from sklearn.model_selection import GridSearchCV
 import sklearn.metrics
 
-def generate_train_test_splits(df_features, df_metadata, splits_file,
-                               method, method_params, pattern_id_column,
-                               class_column):
+from ml_routines.src.combining import concatenate_features
+
+def generate_train_test_splits(df_metadata, splits_file,
+                               split_method, split_method_params, 
+                               pattern_id_column, class_column):
     """Generates train and test splits for internal validation.
     
     Parameters
     ----------
-    df_features: pd.DataFrame
-        The dataframe containing the features. 
     df_metadata: pd.DataFrame
         The dataframe containing the metadata.
     splits_file: str
         Full (relative or absolute) path where the splits are cached (for
         repeatable results).
-    method: str
+    split_method: str
         The method used for generating the train/test splits. Can be:
         - 'stratified-k-fold' -> stratified k-fold
         - 'stratified-shuffle-split' -> stratified shuffle split
         Note: stratification is based on the values of class_column.
-    method_params: dict
+    split_method_params: dict
         Method-specific parameters.
         - n_splits: int
             The number of splits (or folds). Applies to 
@@ -54,37 +54,33 @@ def generate_train_test_splits(df_features, df_metadata, splits_file,
     """
     
     #Set the primary key as index
-    for df in [df_features, df_metadata]:
-        df.set_index(keys=pattern_id_column, inplace=True)  
+    df_metadata.set_index(keys=pattern_id_column, inplace=True)  
         
     #Sort by index to ensure repeatability
-    df_features.sort_index(inplace=True)
+    df_metadata.sort_index(inplace=True)
     
     #Prepare the splits
-    match method:
+    match split_method:
         case 'stratified-k-fold':
             splitter = StratifiedKFold(
-                shuffle= True, n_splits = method_params['n_splits']
+                shuffle= True, n_splits = split_method_params['n_splits']
             )
         case 'stratified-shuffle-split':
             splitter = StratifiedShuffleSplit(
-                n_splits = method_params['n_splits'], 
-                test_size = method_params['test_size']
+                n_splits = split_method_params['n_splits'], 
+                test_size = split_method_params['test_size']
             )
         case _:
             raise Exception('Splitting method not supported')
-            
-    X=df_features.index
-    y=df_metadata.loc[X][class_column]
-    
+                
     #Check if the train/test splits exists, if not generate them
     if os.path.isfile(splits_file):
         df_splits = pd.read_csv(filepath_or_buffer=splits_file)
     else:
-        df_splits = pd.DataFrame(index=df_features.index)
+        df_splits = pd.DataFrame(index=df_metadata.index)
         for i, (train_idxs, test_idxs) in enumerate(splitter.split(X, y)):
-            train_instances = df_features.index[train_idxs]
-            test_instances = df_features.index[test_idxs]
+            train_instances = df_metadata.index[train_idxs]
+            test_instances = df_metadata.index[test_idxs]
             current_split_col_name = f'Split_{i}'
             df_splits[current_split_col_name] = 'unassigned'
             df_splits.loc[train_instances, 
@@ -102,29 +98,27 @@ def generate_train_test_splits(df_features, df_metadata, splits_file,
         df_splits.to_csv(splits_file)
         
     #Reset the primary key
-    for df in [df_features, df_metadata]:
-        df.reset_index(inplace=True)    
+    df_metadata.reset_index(inplace=True)    
         
     return pd.read_csv(splits_file, index_col=pattern_id_column)
 
-def internal_validation(df_features, df_metadata, clf, scaler,
-                        splits_file, method, method_params, 
-                        pattern_id_column, class_column, 
-                        feature_columns, binary_output=False, **args):
-    """Internal validation on a single dataset. Data are splitted into
-    train and test sets according to the method chosen. The train and test
-    splits are cached into the splits_file to ensure repeatability.
+def internal_validation_combined(dfs_features, df_metadata, clf, scaler,
+                                 fusion_method, splits_file, split_method,
+                                 split_method_params, pattern_id_column,
+                                 class_column, feature_columns_list,
+                                 binary_output, **kwargs):
+    """Internal validation on multiple feature sets. Data are splitted 
+    into train and test sets according to the method chosen. The train and 
+    test splits are cached into the splits_file to ensure repeatability.
     
     NOTE: Any time you change the splitting method and/or the related
     parameters (method and method_params arguments) you need to manually
-    delete the cached splits (splits_file) for the changes to take effect.
+    delete the cached splits (splits_file) for the changes to take effect. 
     
     Parameters
     ----------
-    df_features: a single pd.DataFrame or a list of pd.DataFrame
-        The dataframe or a list of dataframes containing the features. If
-        a list is provided a fusion scheme needs to be provided
-        as well through the fusion_method parameter.
+    dfs_features: a list of pd.DataFrame
+        The dataframes containing the features. 
     df_metadata: pd.DataFrame
         The dataframe containing the metadata.
     clf: object
@@ -132,15 +126,18 @@ def internal_validation(df_features, df_metadata, clf, scaler,
     scaler: object or None
         A scaler object as for instance provided by scikit-learn. Pass 
         None for no scaling.
+    fusion_method: str
+        The method for fusing the feaures. See cross_validation_combined()
+        for possible values.
     splits_file: str
         Full (relative or absolute) path where the splits are cached (for
         repeatable results).
-    method: str
+    split_method: str
         The method using for generating the train/test splits. Can be:
         - 'stratified-k-fold' -> stratified k-fold
         - 'stratified-shuffle-split' -> stratified shuffle split
         Note: stratification is based on the values of class_column. 
-    method_params: dict
+    split_method_params: dict
         Method-specific parameters.
         - n_splits: int
             The number of splits (or folds). Applies to 
@@ -156,23 +153,145 @@ def internal_validation(df_features, df_metadata, clf, scaler,
     class_column: str
         Name of the column that identifies the class labels in the
         metadata dataframe.
-    feature_columns: list of str if df_features is not a list,
-        otherwise a list of list of str (N)
+    feature_columns_list: list (N) of list of str
+        The column names representing the features in each of the 
+        dfs_train/dfs_test entries.
+    binary_output: bool
+        Whether to treat the classification problem as a binary one and
+        return senistivity and specificity accordingly.
+    binary_class_labels: tuple of str (2) [optional]
+        The positive and negative class labels (in this order). Required 
+        if binary_output = True.
+    param_grid: dict [optional)]
+        Performs hyperparameter tuning via 5-fold cross validation on
+        the parameter space defined by the keys and values of the 
+        dictionary.
+    """
+    
+    #Initialise the return values
+    if binary_output:
+        valid_res = np.zeros(shape=(split_method_params['n_splits'], 3))
+    else:
+        valid_res = np.zeros(shape=(split_method_params['n_splits'], 1))
+                 
+    #Read/generate the splits and iterate through them
+    splits = generate_train_test_splits(
+        df_metadata=df_metadata, 
+        splits_file=splits_file, split_method=split_method, 
+        split_method_params=split_method_params, 
+        pattern_id_column=pattern_id_column,
+        class_column=class_column)
+    
+   
+    for split_idx, split in enumerate(splits.columns):
+        
+        dfs_train, dfs_test = list(), list()
+        
+        for df_features in dfs_features:
+            
+            #Set the primary key as index
+            for df in [df_features, df_metadata]:
+                df.set_index(keys=pattern_id_column, inplace=True)             
+            
+            train_indices_on_df = df_features.index[splits[split] == 'train']
+            test_indices_on_df = df_features.index[splits[split] == 'test']
+        
+            df_train_metadata = df_metadata.loc[train_indices_on_df]
+            df_test_metadata = df_metadata.loc[test_indices_on_df]
+            
+            df_train = df_features.loc[train_indices_on_df]
+            df_test = df_features.loc[test_indices_on_df]
+            
+            #Reset the indices
+            for df in [df_train, df_test, df_train_metadata,
+                       df_test_metadata, df_features, df_metadata]:
+                df.reset_index(inplace=True)             
+        
+            dfs_train.append(df_train)
+            dfs_test.append(df_test) 
+                      
+        classification_report =\
+        cross_validation_combined(
+            dfs_train=dfs_train, dfs_test=dfs_test, 
+            df_train_metadata=df_train_metadata, 
+            df_test_metadata=df_test_metadata, clf=clf, 
+            scaler=scaler, pattern_id_column=pattern_id_column, 
+            class_column=class_column, 
+            feature_columns_list=feature_columns_list, 
+            fusion_method=fusion_method, **kwargs) 
+            
+        valid_res[split_idx, 0] = classification_report['accuracy']
+            
+        if binary_output:
+            sens, spec = _get_sensitivity_specificity(
+                classification_report, kwargs['binary_class_labels']
+            )
+            valid_res[split_idx, 1] = sens
+            valid_res[split_idx, 2] = spec
+    
+    return valid_res
+
+
+def internal_validation(df_features, df_metadata, clf, scaler,
+                        splits_file, split_method, split_method_params, 
+                        pattern_id_column, class_column, 
+                        feature_columns, binary_output=False, **kwargs):
+    """Internal validation on a single feature set. Data are splitted into
+    train and test sets according to the method chosen. The train and test
+    splits are cached into the splits_file to ensure repeatability.
+    
+    NOTE: Any time you change the splitting method and/or the related
+    parameters (method and method_params arguments) you need to manually
+    delete the cached splits (splits_file) for the changes to take effect.
+    
+    Parameters
+    ----------
+    df_features: pd.DataFrame
+        The dataframe containing the features. 
+    df_metadata: pd.DataFrame
+        The dataframe containing the metadata.
+    clf: object
+        The classifiesr object as for instance provided by scikit-learn.
+    scaler: object or None
+        A scaler object as for instance provided by scikit-learn. Pass 
+        None for no scaling.
+    splits_file: str
+        Full (relative or absolute) path where the splits are cached (for
+        repeatable results).
+    split_method: str
+        The method using for generating the train/test splits. Can be:
+        - 'stratified-k-fold' -> stratified k-fold
+        - 'stratified-shuffle-split' -> stratified shuffle split
+        Note: stratification is based on the values of class_column. 
+    split_method_params: dict
+        Method-specific parameters.
+        - n_splits: int
+            The number of splits (or folds). Applies to 
+            'stratified-k-fold' and 'stratified-shuffle-split'.
+        - test_size: float
+            Fraction of samples in the dataset to include in the test 
+            split; the complement is assigned to the train split.
+            Aplies to 'stratified-shuffle-split'.    
+    pattern_id_column: str
+        The name of the column that uniquely identifies each pattern 
+        (i.e., case, instance, etc) in both the df_features and 
+        df_metadata dataframes.
+    class_column: str
+        Name of the column that identifies the class labels in the
+        metadata dataframe.
+    feature_columns: list of str
         Names of the columns that store the features in the
         df_features dataframe.
     binary_output: bool
         Whether to treat the classification problem as a binary one and
         return senistivity and specificity accordingly.
-    binary_class_labels: tuple of str (2)
+    binary_class_labels: tuple of str (2) [optional]
         The positive and negative class labels (in this order). Required 
         if binary_output = True.
-    param_grid: dict (optional)
+    param_grid: dict [optional]
         Performs hyperparameter tuning via 5-fold cross validation on
         the parameter space defined by the keys and values of the 
         dictionary.
-    fusion_method: str (optional, required if df_dataframe is a list)
-        The method for fusing the feaures. See combining.late_fusion()
-        for possible values.
         
     Returns
     -------
@@ -185,76 +304,66 @@ def internal_validation(df_features, df_metadata, clf, scaler,
     
     #Initialise the return values
     if binary_output:
-        valid_res = np.zeros(shape=(method_params['n_splits'], 3))
+        valid_res = np.zeros(shape=(split_method_params['n_splits'], 3))
     else:
-        valid_res = np.zeros(shape=(method_params['n_splits'], 1))
+        valid_res = np.zeros(shape=(split_method_params['n_splits'], 1))
                  
     #Read/generate the splits and iterate through them
     splits = generate_train_test_splits(
-        df_features=df_features, df_metadata=df_metadata, 
-        splits_file=splits_file, method=method, 
-        method_params=method_params, pattern_id_column=pattern_id_column,
-        class_column=class_column)
+        df_metadata=df_metadata, 
+        splits_file=splits_file, split_method=split_method, 
+        split_method_params=split_method_params, 
+        pattern_id_column=pattern_id_column,
+        class_column=class_column)    
     
+   
     #Set the primary key as index
     for df in [df_features, df_metadata]:
-        df.set_index(keys=pattern_id_column, inplace=True)     
+        df.set_index(keys=pattern_id_column, inplace=True)    
     
     for split_idx, split in enumerate(splits.columns):
+    
         train_indices_on_df = df_features.index[splits[split] == 'train']
         test_indices_on_df = df_features.index[splits[split] == 'test']
         
         df_train_metadata = df_metadata.loc[train_indices_on_df]
         df_test_metadata = df_metadata.loc[test_indices_on_df]
         
-        #if df_features is list:
-            ##We have a list of feature sets 
-            #dfs_train = list()
-            #dfs_test = list()            
-            #for df_features_ in df_features:
-                #dfs_train.append(df_features_.loc[train_indices_on_df])
-                #dfs_test.append(df_features_.loc[test_indices_on_df])                 
-
-            #classification_report = late_fusion(
-                #dfs_train=dfs_train, dfs_test=dfs_test, 
-                #df_train_metadata=df_train_metadata, 
-                #df_test_metadata=df_test_metadata, clf=clf, 
-                #scaler=scaler, pattern_id_column=pattern_id_column, 
-                #class_column=class_column, 
-                #feature_columns_list=feature_columns, **args)    
-            #a = 0
-        #else:
-
         df_train = df_features.loc[train_indices_on_df]
-        df_test = df_features.loc[test_indices_on_df]        
+        df_test = df_features.loc[test_indices_on_df]
         
+        #Reset the index
+        for df in [df_train, df_test, df_train_metadata, 
+                   df_test_metadata]:
+            df.reset_index(inplace=True)
+                        
         classification_report = cross_validation(
                 df_train=df_train, df_test=df_test, 
                 df_train_metadata=df_train_metadata, 
                 df_test_metadata=df_test_metadata, clf=clf, scaler=scaler,
                 pattern_id_column=pattern_id_column, 
                 class_column=class_column, 
-                feature_columns=feature_columns, **args)
+                feature_columns=feature_columns, **kwargs)
                 
         valid_res[split_idx, 0] = classification_report['accuracy']
         if binary_output:
             sens, spec = _get_sensitivity_specificity(
-                classification_report, args['binary_class_labels']
+                classification_report, kwargs['binary_class_labels']
             )
             valid_res[split_idx, 1] = sens
             valid_res[split_idx, 2] = spec
-        
+    
     #Reset the indices
     for df in [df_features, df_metadata]:
-        df.reset_index(inplace=True)  
-        
+        df.reset_index(inplace=True)    
+             
     return valid_res
     
             
 def cross_validation(df_train, df_test, df_train_metadata, 
                      df_test_metadata, clf, scaler,
                      pattern_id_column, class_column, feature_columns,
-                     complete_report=False, **args):
+                     complete_report=False, **kwargs):
     """Performance estimation on one given set of features
     
     Parameters
@@ -283,7 +392,7 @@ def cross_validation(df_train, df_test, df_train_metadata,
         df_train and df_test dataframes.
     complete_report: bool
         If True a complete report is generated.
-    param_grid: dict (optional)
+    param_grid: dict [optional]
         Performs hyperparameter tuning via 5-fold cross validation on
         the parameter space defined by the keys and values of the 
         dictionary.
@@ -305,8 +414,7 @@ def cross_validation(df_train, df_test, df_train_metadata,
     """
     #Set the primary key as index
     for df in [df_train, df_test, df_train_metadata, df_test_metadata]:
-        if df.index.name != pattern_id_column:
-            df.set_index(keys=pattern_id_column, inplace=True)
+        df.set_index(keys=pattern_id_column, inplace=True)
     
     #Get the train features and labels
     X_train = df_train[feature_columns]
@@ -321,8 +429,8 @@ def cross_validation(df_train, df_test, df_train_metadata,
         X_test = scaler.transform(X_test)
     
     #Perform hyperparameter tuning if requested
-    if 'param_grid' in args:
-        tuned_clf = GridSearchCV(clf, args['param_grid'])
+    if 'param_grid' in kwargs:
+        tuned_clf = GridSearchCV(clf, kwargs['param_grid'])
         tuned_clf.fit(X_train, y_train)
         clf = tuned_clf.best_estimator_
     
@@ -359,13 +467,121 @@ def cross_validation(df_train, df_test, df_train_metadata,
     
     return retval
 
-def cross_validation_late_fusion(dfs_train, dfs_test, df_train_metadata, 
-                                 df_test_metadata, clf, scaler,
-                                 pattern_id_column, class_column, 
-                                 feature_columns_list, 
-                                 fusion_method='product', **args):
-    """Performance estimation given multiple sets of features. Combination
-    is based on hard or soft late fusion.
+
+
+def cross_validation_combined(dfs_train, dfs_test, df_train_metadata, 
+                              df_test_metadata, clf, scaler, 
+                              pattern_id_column, class_column, 
+                              feature_columns_list, 
+                              fusion_method='product', **args):
+    """Performance estimation on multiple sets of features.
+    
+    Parameters
+    ----------
+    dfs_train: list of pd.DataFrame (N)
+        The dataframes containing the train data.
+    dfs_test: list of pd.DataFrame (N)
+        The dataframes containing the test data.
+    df_train_metadata: pd.DataFrame
+        The dataframe containing the metadata of the train sets.
+    df_test_metadata: pd.DataFrame
+        The dataframe containing the metadata of the test sets.
+    clf: object
+        The classifiesr object as for instance provided by scikit-learn
+    scaler: object or None
+        A scaler object as for instance provided by scikit-learn. Pass 
+        None for no scaling.
+    pattern_id_column: str
+        The name of the column that uniquely identifies each pattern 
+        (i.e., case, instance, etc) in all the dataframes (primary key).
+    class_column: str
+        Name of the column that stores the class labels in the
+        train and test metadata dataframes.
+    feature_columns_list: list (N) of list of str
+        The column names representing the features in each of the 
+        dfs_train/dfs_test entries.
+    fusion_method: str
+        The early or late feature combination method. Can be:
+        
+            ----- Feature concatenation (early-fusion) -----
+            - `early-fusion`
+            ------------------------------------------------
+            
+            -------- Combination of hard class labels ------
+            - `majority-voting`
+            ------------------------------------------------
+            
+            ---- Combination of posterior probabilities ----
+            - `prod` -> product rule
+            - `sum` -> sum rule
+            - `max` -> max rule
+            ------------------------------------------------
+            
+    param_grid: dict (optional)
+        Performs hyperparameter tuning via 5-fold cross validation on
+        the parameter space defined by the keys and values of the 
+        dictionary.
+        
+    Returns
+    -------
+    classification_report: dict
+        Summary of the precision, recall, F1 score for each class as
+        returned by sklearn.metrics.classification_report().
+    """
+    
+    match fusion_method:
+        case 'early-fusion':
+            
+            df_train, feature_columns_train = concatenate_features(
+                dfs_features=dfs_train, 
+                feature_columns=feature_columns_list, 
+                pattern_id_column=pattern_id_column)
+            df_test, feature_columns_test = concatenate_features(
+                dfs_features=dfs_test, 
+                feature_columns=feature_columns_list, 
+                pattern_id_column=pattern_id_column)
+            feature_columns = list(set(feature_columns_train) & 
+                                   set(feature_columns_test))
+            
+            classification_report =\
+                cross_validation(
+                    df_train=df_train, df_test=df_test, 
+                    df_train_metadata=df_train_metadata, 
+                    df_test_metadata=df_test_metadata, clf=clf, 
+                    scaler=scaler, pattern_id_column=pattern_id_column, 
+                    class_column=class_column, 
+                    feature_columns=feature_columns, 
+                    complete_report=False, **args)            
+            
+        case 'majority-voting' | 'max' | 'sum' | 'prod':
+            y_pred = late_fusion(
+                dfs_train=dfs_train, dfs_test=dfs_test, 
+                df_train_metadata=df_train_metadata, 
+                df_test_metadata=df_test_metadata, clf=clf, scaler=scaler, 
+                pattern_id_column=pattern_id_column, 
+                class_column=class_column, 
+                feature_columns_list=feature_columns_list, 
+                fusion_method=fusion_method, **args)
+            
+            df_test_metadata.set_index(keys=pattern_id_column, 
+                                       inplace=True)
+            y_true = df_test_metadata.loc[df_test_metadata.index, 
+                                              class_column]
+            df_test_metadata.reset_index(inplace=True)
+            classification_report = sklearn.metrics.classification_report(
+                            y_true, y_pred, output_dict=True)            
+            
+        case _:
+            raise Exception(f'Fusion method *{fusion_method}* '
+                            f'not supported')    
+    return classification_report
+    
+        
+def late_fusion(dfs_train, dfs_test, df_train_metadata, 
+                df_test_metadata, clf, scaler, pattern_id_column, 
+                class_column, feature_columns_list, 
+                fusion_method='product', **args):
+    """Supervised classification based on hard or soft late fusion.
     
     Parameters
     ----------
@@ -412,9 +628,8 @@ def cross_validation_late_fusion(dfs_train, dfs_test, df_train_metadata,
         
     Returns
     -------
-    classification_report: dict
-        Summary of the precision, recall, F1 score for each class as
-        returned by sklearn.metrics.classification_report().
+    y_pred: list of str or int
+        The predicted labels.
     """
     
     #Stack the classification results obtained with each feature set
@@ -461,17 +676,8 @@ def cross_validation_late_fusion(dfs_train, dfs_test, df_train_metadata,
             y_pred = combined_post_proba.idxmax(axis=1)
         case _:
             raise Exception('Fusion method not supported')
-    
-    #Prepare the classification report
-    df_test_metadata.set_index(keys=pattern_id_column, inplace=True)
-    y_true = df_test_metadata.loc[combined_post_proba.index, 
-                                  class_column]
-    df_test_metadata.reset_index(inplace=True)
-    classification_report = sklearn.metrics.classification_report(
-                y_true, y_pred, output_dict=True)            
-    
-    return classification_report
-
+     
+    return y_pred            
 
 def _get_sensitivity_specificity(classification_report, 
                                  binary_class_labels):
