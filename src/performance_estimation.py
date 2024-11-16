@@ -565,8 +565,7 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
             
             df_test_metadata.set_index(keys=pattern_id_column, 
                                        inplace=True)
-            y_true = df_test_metadata.loc[df_test_metadata.index, 
-                                              class_column]
+            y_true = df_test_metadata.loc[y_pred.index, class_column]
             df_test_metadata.reset_index(inplace=True)
             classification_report = sklearn.metrics.classification_report(
                             y_true, y_pred, output_dict=True)            
@@ -628,8 +627,9 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
         
     Returns
     -------
-    y_pred: list of str or int
-        The predicted labels.
+    predicted_labels: pd.Series
+        A pandas Series where indices represent the pattern ids and values
+        the corresponding predicted labels.
     """
     
     #Stack the classification results obtained with each feature set
@@ -664,7 +664,10 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
                 groupby(by=[pattern_id_column]).\
                 agg(lambda x:x.value_counts().index[0]).reset_index()
             
-            y_pred = combined_hard_labels['Predicted_label']
+            predicted_labels = pd.Series(
+                data=combined_hard_labels['Predicted_label'].tolist(),
+                index=combined_hard_labels[pattern_id_column]
+            )
             
         case 'max' | 'sum' | 'prod':
             #Combined the posterior probabilities by the given method
@@ -673,11 +676,12 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
                 groupby(by=[pattern_id_column]).agg(fusion_method) 
             
             #Get the class labels with the highest combined probability
-            y_pred = combined_post_proba.idxmax(axis=1)
+            predicted_labels = combined_post_proba.idxmax(axis=1)
+
         case _:
             raise Exception('Fusion method not supported')
      
-    return y_pred            
+    return predicted_labels            
 
 def _get_sensitivity_specificity(classification_report, 
                                  binary_class_labels):
