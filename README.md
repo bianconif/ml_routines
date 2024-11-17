@@ -1,5 +1,26 @@
 # A tiny collection of Python routines for machine learning
 
+## Main features
+
+### Performance estimation of feature sets for supervised classification
+- `performance_estimation/internal_validation`
+  - Internal validation given one feature set
+    - Stratified k-fold
+    - Stratified shuffle split
+- `performance_estimation/cross_validation`
+  - Cross validation given two feature sets
+
+### Combination of classifiers
+- Combination via early fusion (feature concatenation)
+- Combination via late fusion
+  - Hard-level combination: majority voting
+  - Soft-level combination: product, sum and max rule
+
+## Dependencies
+- [NumPy](https://numpy.org/)
+- [pandas](https://pandas.pydata.org/)
+- [scikit-learn](https://scikit-learn.org/stable/)
+
 ## License
 The code in this repository is distributed under [GNU General Public License v3.0](https://choosealicense.com/licenses/gpl-3.0/).
 

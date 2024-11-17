@@ -1,5 +1,4 @@
 import pandas as pd
-import sklearn.metrics
 
 def concatenate_features(dfs_features, feature_columns, pattern_id_column):
     """Concatenates features (early fusion)
