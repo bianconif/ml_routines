@@ -187,20 +187,20 @@ def internal_validation_combined(dfs_features, df_metadata, clf, scaler,
         
         dfs_train, dfs_test = list(), list()
         
+        train_indices = (splits[split] == 'train').index
+        test_indices = (splits[split] == 'test').index
+        
         for df_features in dfs_features:
             
             #Set the primary key as index
             for df in [df_features, df_metadata]:
                 df.set_index(keys=pattern_id_column, inplace=True)             
             
-            train_indices_on_df = df_features.index[splits[split] == 'train']
-            test_indices_on_df = df_features.index[splits[split] == 'test']
-        
-            df_train_metadata = df_metadata.loc[train_indices_on_df]
-            df_test_metadata = df_metadata.loc[test_indices_on_df]
+            df_train_metadata = df_metadata.loc[train_indices]
+            df_test_metadata = df_metadata.loc[test_indices]
             
-            df_train = df_features.loc[train_indices_on_df]
-            df_test = df_features.loc[test_indices_on_df]
+            df_train = df_features.loc[train_indices]
+            df_test = df_features.loc[test_indices]
             
             #Reset the indices
             for df in [df_train, df_test, df_train_metadata,
@@ -417,11 +417,11 @@ def cross_validation(df_train, df_test, df_train_metadata,
         df.set_index(keys=pattern_id_column, inplace=True)
     
     #Get the train features and labels
-    X_train = df_train[feature_columns]
+    X_train = df_train.loc[df_train.index, feature_columns]
     y_train = df_train_metadata.loc[df_train.index, class_column]
     
     #Get the test features
-    X_test = df_test[feature_columns]
+    X_test = df_test.loc[df_test.index, feature_columns]
     
     #Apply feature normalisation if required
     if scaler:
