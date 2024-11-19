@@ -107,7 +107,7 @@ def internal_validation_combined(dfs_features, df_metadata, clf, scaler,
                                  split_method_params, pattern_id_column,
                                  class_column, feature_columns_list,
                                  binary_output, **kwargs):
-    """Internal validation on multiple feature sets. Data are splitted 
+    """Internal validation on multiple feature sets. Data are split 
     into train and test sets according to the method chosen. The train and 
     test splits are cached into the splits_file to ensure repeatability.
     
@@ -187,8 +187,8 @@ def internal_validation_combined(dfs_features, df_metadata, clf, scaler,
         
         dfs_train, dfs_test = list(), list()
         
-        train_indices = (splits[split] == 'train').index
-        test_indices = (splits[split] == 'test').index
+        train_indices = splits[splits[split] == 'train'].index
+        test_indices = splits[splits[split] == 'test'].index
         
         for df_features in dfs_features:
             
