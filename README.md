@@ -8,7 +8,7 @@
   - Stratified shuffle split
 - Cross validation given two feature sets
 
-### Combination of classifiers
+### Combination of feature sets
 - Combination via early fusion (feature concatenation)
 - Combination via late fusion
   - Hard-level combination: majority voting
@@ -16,9 +16,11 @@
 
 ### Sample usage
 - Internal validation based on the iris dataset: `src/examples/iris`
+- Internal validation with different feature fusion schemes based on the penguins dataset: `src/examples/penguins` 
 
 ## Dependencies
 - [NumPy](https://numpy.org/)
+- [palmerpenguins](https://github.com/mcnakhaee/palmerpenguins)
 - [pandas](https://pandas.pydata.org/)
 - [scikit-learn](https://scikit-learn.org/stable/)
 

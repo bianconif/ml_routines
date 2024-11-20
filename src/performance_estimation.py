@@ -478,7 +478,7 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
                               df_test_metadata, clf, scaler, 
                               pattern_id_column, class_column, 
                               feature_columns_list, 
-                              fusion_method='product', **args):
+                              fusion_method, **args):
     """Performance estimation on multiple sets of features.
     
     Parameters
@@ -567,13 +567,13 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
                 class_column=class_column, 
                 feature_columns_list=feature_columns_list, 
                 fusion_method=fusion_method, **args)
-            
             df_test_metadata.set_index(keys=pattern_id_column, 
                                        inplace=True)
             y_true = df_test_metadata.loc[y_pred.index, class_column]
             df_test_metadata.reset_index(inplace=True)
+            
             classification_report = sklearn.metrics.classification_report(
-                            y_true, y_pred, output_dict=True)            
+                            y_true, y_pred, output_dict=True)  
             
         case _:
             raise Exception(f'Fusion method *{fusion_method}* '
