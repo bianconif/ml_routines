@@ -78,6 +78,11 @@ def generate_train_test_splits(df_metadata, splits_file,
         df_splits = pd.read_csv(filepath_or_buffer=splits_file)
     else:
         df_splits = pd.DataFrame(index=df_metadata.index)
+        
+        #Target labels (y) and dummy features (X)
+        y=df_metadata[class_column]
+        X=np.zeros(shape=[len(y),1])
+        
         for i, (train_idxs, test_idxs) in enumerate(splitter.split(X, y)):
             train_instances = df_metadata.index[train_idxs]
             test_instances = df_metadata.index[test_idxs]
@@ -297,7 +302,7 @@ def internal_validation(df_features, df_metadata, clf, scaler,
     -------
     valid_res: np.array of float (n_splits, 1) or (n_splits, 3)
         The results of the validation. If binary_output = False the only
-        column reports accuarcy; otherwise The first column reports
+        column reports accuracy; otherwise The first column reports
         accuracy, the second sensitivity and the third specificity.
         All the values are floats in [0,1].
     """
