@@ -3,18 +3,19 @@
 ## Main features
 
 ### Performance estimation of feature sets for supervised classification
-- `performance_estimation/internal_validation`
-  - Internal validation given one feature set
-    - Stratified k-fold
-    - Stratified shuffle split
-- `performance_estimation/cross_validation`
-  - Cross validation given two feature sets
+- Internal validation given one feature set
+  - Stratified k-fold
+  - Stratified shuffle split
+- Cross validation given two feature sets
 
 ### Combination of classifiers
 - Combination via early fusion (feature concatenation)
 - Combination via late fusion
   - Hard-level combination: majority voting
   - Soft-level combination: product, sum and max rule
+
+### Sample usage
+- Internal validation based on the iris dataset: `src/examples/iris`
 
 ## Dependencies
 - [NumPy](https://numpy.org/)
