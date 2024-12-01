@@ -122,7 +122,7 @@ def internal_validation_combined(dfs_features, df_metadata, clf, scaler,
     
     Parameters
     ----------
-    dfs_features: a list of pd.DataFrame
+    dfs_features: a list of pd.DataFrame (N)
         The dataframes containing the features. 
     df_metadata: pd.DataFrame
         The dataframe containing the metadata.
@@ -167,10 +167,14 @@ def internal_validation_combined(dfs_features, df_metadata, clf, scaler,
     binary_class_labels: tuple of str (2) [optional]
         The positive and negative class labels (in this order). Required 
         if binary_output = True.
-    param_grid: dict [optional)]
+    param_grid: dict (optional)
         Performs hyperparameter tuning via 5-fold cross validation on
         the parameter space defined by the keys and values of the 
         dictionary.
+    weights: list of float (N, optional)
+        The weights to be assigned to each feature set in the fusion 
+        method chosen. See also late_fusion() and concatenate_features()
+        documentation for details.
     """
     
     #Initialise the return values
@@ -482,7 +486,7 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
                               df_test_metadata, clf, scaler, 
                               pattern_id_column, class_column, 
                               feature_columns_list, 
-                              fusion_method, **args):
+                              fusion_method, **kwargs):
     """Performance estimation on multiple sets of features.
     
     Parameters
@@ -530,6 +534,10 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
         Performs hyperparameter tuning via 5-fold cross validation on
         the parameter space defined by the keys and values of the 
         dictionary.
+    weights: list of float (N, optional)
+        The weights to be assigned to each feature set in the fusion 
+        method chosen. See also late_fusion() and concatenate_features()
+        documentation for details.
         
     Returns
     -------
@@ -544,11 +552,11 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
             df_train, feature_columns_train = concatenate_features(
                 dfs_features=dfs_train, 
                 feature_columns=feature_columns_list, 
-                pattern_id_column=pattern_id_column)
+                pattern_id_column=pattern_id_column, **kwargs)
             df_test, feature_columns_test = concatenate_features(
                 dfs_features=dfs_test, 
                 feature_columns=feature_columns_list, 
-                pattern_id_column=pattern_id_column)
+                pattern_id_column=pattern_id_column, **kwargs)
             feature_columns = list(set(feature_columns_train) & 
                                    set(feature_columns_test))
             
@@ -560,7 +568,7 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
                     scaler=scaler, pattern_id_column=pattern_id_column, 
                     class_column=class_column, 
                     feature_columns=feature_columns, 
-                    complete_report=False, **args)            
+                    complete_report=False, **kwargs)            
             
         case 'majority-voting' | 'max' | 'sum' | 'prod':
             y_pred = late_fusion(
@@ -570,7 +578,7 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
                 pattern_id_column=pattern_id_column, 
                 class_column=class_column, 
                 feature_columns_list=feature_columns_list, 
-                fusion_method=fusion_method, **args)
+                fusion_method=fusion_method, **kwargs)
             df_test_metadata.set_index(keys=pattern_id_column, 
                                        inplace=True)
             y_true = df_test_metadata.loc[y_pred.index, class_column]
@@ -696,7 +704,7 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
                                        'Weight']],
                 columns=['Predicted_label'], prefix='', prefix_sep='')
             
-            #Weight the votes
+            #Weigh the votes
             df_weighted_votes = df_votes.copy()
             for class_ in class_columns:
                 df_weighted_votes[class_] = \
@@ -705,11 +713,18 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
             #Sum up the weighted votes
             df_total_votes = df_weighted_votes.groupby(
                 by=pattern_id_column).agg(sum)
-                            
+            
+            #Get the class labels with the most weighted votes                
             predicted_labels = df_total_votes[class_columns].\
                 idxmax(axis=1)
             
         case 'max' | 'sum' | 'prod':
+            
+            #Weigh the posterior probabilities
+            for class_ in class_columns:
+                complete_reports[class_] = \
+                    complete_reports[class_] * complete_reports['Weight']            
+            
             #Combined the posterior probabilities by the given method
             combined_post_proba = \
                 complete_reports[[*class_columns, pattern_id_column]].\

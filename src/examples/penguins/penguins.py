@@ -50,23 +50,33 @@ n_folds = 5
 splits_file_k_fold = '../src/examples/penguins/splits_file_k_fold.csv'
 
 #Schemes for feature combination
-combination_schemes = ['early-fusion', 'majority-voting', 'prod']
+combination_schemes = ['early-fusion', 'majority-voting', 'sum']
+
+#Weights for feature combination
+weighting_schemes = {
+    'same-weights': [1.0, 1.0], #Assign equal weights to feature_1 and _2
+    'diff-weights': [0.2, 0.8]  #Assign fifferent weights to feature_1 and _2
+}
 
 for combination_scheme in combination_schemes:
-    accuracy = \
-        internal_validation_combined(
-            dfs_features=[df_features_1, df_features_2], 
-            df_metadata=df_metadata, clf=clf, scaler=scaler,
-            fusion_method=combination_scheme, 
-            splits_file=splits_file_k_fold, split_method=split_method,
-            split_method_params={'n_splits': n_folds}, 
-            pattern_id_column=pattern_id_column,
-            class_column=class_column, 
-            feature_columns_list=[features_1, features_2],
-            binary_output=False
-        ) 
-    
-    print(f'Accuracy over the {n_folds} folds ({combination_scheme}): ')
-    for accuracy_ in accuracy.flatten():
-        print(f'{100*accuracy_:3.2f}%')   
-    print()
+    for weighting_scheme, weights in weighting_schemes.items():
+        
+        accuracy = \
+            internal_validation_combined(
+                dfs_features=[df_features_1, df_features_2], 
+                df_metadata=df_metadata, clf=clf, scaler=scaler,
+                fusion_method=combination_scheme, 
+                splits_file=splits_file_k_fold, split_method=split_method,
+                split_method_params={'n_splits': n_folds}, 
+                pattern_id_column=pattern_id_column,
+                class_column=class_column, 
+                feature_columns_list=[features_1, features_2],
+                binary_output=False,
+                weights=weights,
+            ) 
+        
+        print(f'Accuracy over the {n_folds} folds '
+              f'({combination_scheme}, {weighting_scheme}): ')
+        for accuracy_ in accuracy.flatten():
+            print(f'{100*accuracy_:3.2f}%')   
+        print()

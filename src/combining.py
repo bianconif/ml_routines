@@ -1,6 +1,7 @@
 import pandas as pd
 
-def concatenate_features(dfs_features, feature_columns, pattern_id_column):
+def concatenate_features(dfs_features, feature_columns, 
+                         pattern_id_column, **kwargs):
     """Concatenates features (early fusion)
     
     Parameters
@@ -15,6 +16,9 @@ def concatenate_features(dfs_features, feature_columns, pattern_id_column):
         The name of the column that uniquely identifies each pattern 
         (i.e., case, instance, etc). Must be the same in all of the
         dataframes in dfs_features.
+    weights: list of float (N, optional)
+        The weights to be assigned to each feature set. Each feature of
+        each feature set is multiplied by the corresponding weight.
         
     Returns
     -------
@@ -34,6 +38,20 @@ def concatenate_features(dfs_features, feature_columns, pattern_id_column):
         
         df_features_out = df_features_out.rename(columns=mapper)
         return df_features_out, feature_columns_out
+    
+    #Assign unit weights if not provided
+    if 'weights' in kwargs:
+        weights = kwargs['weights']
+    else:
+        weights = [1.0] * len(dfs_features)  
+        
+    #Multiply the features by the given weights
+    for df_features, feature_columns_, weight in\
+        zip(dfs_features, feature_columns, weights):
+        
+        for feature_column in feature_columns_:
+            df_features[feature_column] =\
+                df_features[feature_column] * weight 
     
     if len(dfs_features) != len(feature_columns):
         raise Exception('There must be one feature column list for'
