@@ -417,6 +417,10 @@ def cross_validation(df_train, df_test, df_train_metadata,
          - All the other columns contain the posterior probabilities of
            each class, where the column name represents the class label.
     """
+    #Convert the class labels to strings
+    for df in [df_train_metadata, df_test_metadata]:
+        df[class_column] = df[class_column].astype(str)
+    
     #Set the primary key as index
     for df in [df_train, df_test, df_train_metadata, df_test_metadata]:
         df.set_index(keys=pattern_id_column, inplace=True)
@@ -584,7 +588,7 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
 def late_fusion(dfs_train, dfs_test, df_train_metadata, 
                 df_test_metadata, clf, scaler, pattern_id_column, 
                 class_column, feature_columns_list, 
-                fusion_method='product', **args):
+                fusion_method='product', **kwargs):
     """Supervised classification based on hard or soft late fusion.
     
     Parameters
@@ -629,6 +633,14 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
         Performs hyperparameter tuning via 5-fold cross validation on
         the parameter space defined by the keys and values of the 
         dictionary.
+    weights: list of float (N, optional)
+        The weights to be assigned to each feature set in the fusion
+        scheme selected. If fusion_method is a combination of hard class
+        labels the weights apply to the hard votes associated to each 
+        feature set (i.e., weighted majority voting). Otherwise, if
+        fusion_method combines posterior probabilities the weights apply
+        to the posterior probabilities associated to each feature set.
+        If not provided unit weights are used.
         
     Returns
     -------
@@ -636,6 +648,12 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
         A pandas Series where indices represent the pattern ids and values
         the corresponding predicted labels.
     """
+    
+    #Assign unit weights if not provided
+    if 'weights' in kwargs:
+        weights = kwargs['weights']
+    else:
+        weights = [1.0] * len(dfs_train)
     
     #Stack the classification results obtained with each feature set
     for idx, (df_train, df_test, feature_columns) in\
@@ -646,8 +664,8 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
                          df_test_metadata, clf, scaler,
                          pattern_id_column, class_column, 
                          feature_columns,
-                         complete_report=True, **args)
-        complete_report['Instance'] = idx
+                         complete_report=True, **kwargs)
+        complete_report[['Instance', 'Weight']] = idx, weights[idx]
         
         if idx == 0:
             complete_reports = complete_report
@@ -657,22 +675,39 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
     
     class_columns = [c for c in complete_reports.columns
                      if c not in [pattern_id_column, 'Predicted_label',
-                                  'Instance']]
+                                  'Instance', 'Weight']]
     
     match fusion_method:
         case 'majority-voting':
-
-            #Remember the method value_counts() returns the frequency of 
-            #values in a column in decrescent order
-            combined_hard_labels = \
-                complete_reports[[pattern_id_column, 'Predicted_label']].\
-                groupby(by=[pattern_id_column]).\
-                agg(lambda x:x.value_counts().index[0]).reset_index()
             
-            predicted_labels = pd.Series(
-                data=combined_hard_labels['Predicted_label'].tolist(),
-                index=combined_hard_labels[pattern_id_column]
+            #Convert the predicted label column to a category type so
+            #that all the possible classes appear in the one-hot encoding
+            #that follows
+            complete_reports['Predicted_label'] = pd.Categorical(
+                values=complete_reports['Predicted_label'],
+                categories=class_columns
             )
+            
+            #For each pattern get the number of votes received by each
+            #target class            
+            df_votes = pd.get_dummies(
+                data=complete_reports[[pattern_id_column, 
+                                       'Predicted_label', 'Instance',
+                                       'Weight']],
+                columns=['Predicted_label'], prefix='', prefix_sep='')
+            
+            #Weight the votes
+            df_weighted_votes = df_votes.copy()
+            for class_ in class_columns:
+                df_weighted_votes[class_] = \
+                    df_votes[class_] * df_votes['Weight']
+                
+            #Sum up the weighted votes
+            df_total_votes = df_weighted_votes.groupby(
+                by=pattern_id_column).agg(sum)
+                            
+            predicted_labels = df_total_votes[class_columns].\
+                idxmax(axis=1)
             
         case 'max' | 'sum' | 'prod':
             #Combined the posterior probabilities by the given method
