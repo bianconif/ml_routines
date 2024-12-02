@@ -663,6 +663,9 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
     else:
         weights = [1.0] * len(dfs_train)
     
+    #Normalise the weigths to sum one
+    weights = weights/np.linalg.norm(x=weights, ord=1)
+    
     #Stack the classification results obtained with each feature set
     for idx, (df_train, df_test, feature_columns) in\
         enumerate(zip(dfs_train, dfs_test, feature_columns_list)):
@@ -718,12 +721,24 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
             predicted_labels = df_total_votes[class_columns].\
                 idxmax(axis=1)
             
-        case 'max' | 'sum' | 'prod':
+        case 'max' | 'sum' |  'prod':
             
-            #Weigh the posterior probabilities
-            for class_ in class_columns:
-                complete_reports[class_] = \
-                    complete_reports[class_] * complete_reports['Weight']            
+            match fusion_method:
+                case 'max' | 'sum' :
+            
+                    #Weigh the posterior probabilities
+                    for class_ in class_columns:
+                        complete_reports[class_] = \
+                            complete_reports[class_] *\
+                            complete_reports['Weight'] 
+                        
+                case 'prod':
+                    
+                    #Weigh the posterior probabilities
+                    for class_ in class_columns:
+                        complete_reports[class_] = \
+                            complete_reports[class_] **\
+                            complete_reports['Weight']                    
             
             #Combined the posterior probabilities by the given method
             combined_post_proba = \
