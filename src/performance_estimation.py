@@ -648,7 +648,8 @@ def late_fusion(dfs_train, dfs_test, df_train_metadata,
         feature set (i.e., weighted majority voting). Otherwise, if
         fusion_method combines posterior probabilities the weights apply
         to the posterior probabilities associated to each feature set.
-        If not provided unit weights are used.
+        If not provided unit weights are used. Weights are internally 
+        normalised to sum one.
         
     Returns
     -------

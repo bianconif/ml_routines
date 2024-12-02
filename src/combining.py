@@ -19,6 +19,7 @@ def concatenate_features(dfs_features, feature_columns,
     weights: list of float (N, optional)
         The weights to be assigned to each feature set. Each feature of
         each feature set is multiplied by the corresponding weight.
+        Weights are internally normalised to sum one.
         
     Returns
     -------
@@ -43,7 +44,10 @@ def concatenate_features(dfs_features, feature_columns,
     if 'weights' in kwargs:
         weights = kwargs['weights']
     else:
-        weights = [1.0] * len(dfs_features)  
+        weights = [1.0] * len(dfs_features) 
+        
+    #Normalise the weigths to sum one
+    weights = weights/np.linalg.norm(x=weights, ord=1)    
         
     #Multiply the features by the given weights
     for df_features, feature_columns_, weight in\
