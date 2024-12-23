@@ -50,7 +50,7 @@ n_folds = 5
 splits_file_k_fold = '../src/examples/penguins/splits_file_k_fold.csv'
 
 #Schemes for feature combination
-combination_schemes = ['feature-concatenation', 'majority-voting', 'prod', 
+combination_schemes = ['feats-concat', 'majority-voting', 'prod', 
                        'sum']
 
 #Weights for feature combination

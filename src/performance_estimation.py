@@ -517,7 +517,7 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
         The early or late feature combination method. Can be:
         
             -------------- Feature concatenation  ----------
-            - `feature-concatenation`
+            - `feats-concat`
             ------------------------------------------------
             
             -------- Combination of hard class labels ------
@@ -547,7 +547,7 @@ def cross_validation_combined(dfs_train, dfs_test, df_train_metadata,
     """
     
     match fusion_method:
-        case 'feature-concatenation':
+        case 'feats-concat':
             
             df_train, feature_columns_train = concatenate_features(
                 dfs_features=dfs_train, 
